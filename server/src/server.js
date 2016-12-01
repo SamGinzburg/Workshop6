@@ -8,6 +8,7 @@ var express = require('express');
 var app = express();
 
 var StatusUpdateSchema = require('./schemas/statusupdate.json');
+var CommentSchema = require('./schemas/comment.json');
 var validate = require('express-jsonschema').validate;
 var writeDocument = db.writeDocument;
 var addDocument = db.addDocument;
@@ -46,6 +47,29 @@ app.post('/feeditem',
         }
     });
 
+    app.post('/post-comment/:feedID',
+        validate({
+            body: CommentSchema
+        }),
+        function(req, res) {
+            // If this function runs, `req.body` passed JSON validation!
+            var body = req.body;
+
+            var fromUser = getUserIdFromToken(req.get('Authorization'));
+            // Check if requester is authorized to post this status update.
+            // (The requester must be the author of the update.)
+
+            if (fromUser === body.author) {
+              var feedItem = readDocument('feedItems', parseInt(req.params.feedID, 10));
+              feedItem.comments.push(body);
+              writeDocument('feedItems', feedItem);
+              res.send(getFeedItemSync(parseInt(req.params.feedID, 10)));
+            } else {
+                // 401: Unauthorized.
+                res.status(401).end();
+            }
+        });
+
 /**
  * Get the feed data for a particular user.
  */
@@ -63,6 +87,7 @@ app.get('/user/:userid/feed', function(req, res) {
         res.status(401).end();
     }
 });
+
 // Reset database.
 app.post('/resetdb', function(req, res) {
     console.log("Resetting database...");
@@ -71,6 +96,52 @@ app.post('/resetdb', function(req, res) {
     // res.send() sends an empty response with status code 200
     res.send();
 });
+
+app.put('/feeditem/:feeditemid/likeComment/:commentID/id/:userID', function(req, res) {
+  var fromUser = getUserIdFromToken(req.get('Authorization'));
+  var feedItemId = parseInt(req.params.feeditemid, 10);
+  var userID = parseInt(req.params.userID, 10);
+  var commentID = parseInt(req.params.commentID, 10);
+  if(fromUser === userID)
+  {
+    var feedItem = readDocument('feedItems', feedItemId);
+
+    if (feedItem.comments.indexOf(fromUser) === -1)
+    {
+      feedItem.comments[commentID].likeCounter.push(userID);
+      writeDocument('feedItems', feedItem);
+    }
+    feedItem.comments[commentID].author = readDocument('users', feedItem.comments[commentID].author);
+    res.send(feedItem.comments[commentID]);
+  }
+  else {
+    res.status(401).end();
+  }
+});
+
+app.delete('/feeditem/:feeditemid/unlikeComment/:commentID/id/:userID',function(req, res) {
+  var fromUser = getUserIdFromToken(req.get('Authorization'));
+  var feedItemId = parseInt(req.params.feeditemid, 10);
+  var userID = parseInt(req.params.userID, 10);
+  var commentID = parseInt(req.params.commentID, 10);
+
+  if(fromUser === userID)
+  {
+    var feedItem = readDocument('feedItems', feedItemId);
+
+    if (feedItem.comments.indexOf(fromUser) === -1)
+    {
+      feedItem.comments[commentID].likeCounter = feedItem.comments[commentID].likeCounter.filter((number) => number != userID);
+      writeDocument('feedItems', feedItem);
+    }
+    feedItem.comments[commentID].author = readDocument('users', feedItem.comments[commentID].author);
+    res.send(feedItem.comments[commentID]);
+  }
+  else {
+    res.status(401).end();
+  }
+});
+
 app.put('/feeditem/:feeditemid/content', function(req, res) {
     var fromUser = getUserIdFromToken(req.get('Authorization'));
     var feedItemId = req.params.feeditemid;
