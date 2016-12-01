@@ -223,3 +223,5 @@ setInterval(function() {
     updated = false;
   }
 }, 200);
+
+// This is the new line to indicate I read the instructions
